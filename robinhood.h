@@ -34,7 +34,7 @@ class rh_set {
         for (int i = 0; i < _capacity; ++i) {
             _hashes[i] = 0;
         }
-        
+
         // Insert all old elements
         for (int i = 0; i < old_capacity; ++i) {
             if (old_hashes[i] != 0) {
@@ -82,6 +82,30 @@ class rh_set {
         _array[index] = val;
     }
 
+    // called after deleting to shift elements back (fill in empty spot)
+    void shift(int index) {
+        int before = index;
+        index = (index + 1) & _mask;
+
+        while (_hashes[index]) {
+            // compute probing distance for current element
+            const int cur_distance = (index + _capacity - (_hashes[index] & _mask) ) & _mask;
+            // if distance is 0, then we can stop
+            if (cur_distance == 0) {
+                break;
+            }
+
+            std::swap(_hashes[before], _hashes[index]);
+            std::swap(_array[before], _array[index]);
+
+            before = (before + 1) & _mask;
+            index = (index + 1) & _mask;
+        }
+
+        // mark as erased
+        _hashes[before] = 0;
+        // NOTE not calling destructor
+    }
 
 public:
     
@@ -157,31 +181,6 @@ public:
             ++distance;
         }
         return false; // not found
-    }
-
-    // called after deleting to shift elements back (fill in empty spot)
-    void shift(int index) {
-        int before = index;
-        index = (index + 1) & _mask;
-
-        while (_hashes[index]) {
-            // compute probing distance for current element
-            const int cur_distance = (index + _capacity - (_hashes[index] & _mask) ) & _mask;
-            // if distance is 0, then we can stop
-            if (cur_distance == 0) {
-                break;
-            }
-
-            std::swap(_hashes[before], _hashes[index]);
-            std::swap(_array[before], _array[index]);
-            
-            before = (before + 1) & _mask;
-            index = (index + 1) & _mask;
-        }
-        
-        // mark as erased
-        _hashes[before] = 0;
-        // NOTE not calling destructor
     }
 
     int size() const {

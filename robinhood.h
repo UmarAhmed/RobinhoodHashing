@@ -14,6 +14,8 @@ class rh_set {
     std::size_t _size;
     std::size_t _capacity;
 
+    uint32_t _mask;
+
     T* _array;
     std::size_t * _hashes;
 
@@ -24,16 +26,17 @@ class rh_set {
         auto old_capacity = _capacity;
 
         _capacity *= 2;
+        _mask = _capacity - 1;
         _array = new T[_capacity];
         _hashes = new std::size_t[_capacity];
 
         // Set hashes to zero
-        for (int i = 0; i < _capacity; i++) {
+        for (int i = 0; i < _capacity; ++i) {
             _hashes[i] = 0;
         }
         
         // Insert all old elements
-        for (int i = 0; i < old_capacity; i++) {
+        for (int i = 0; i < old_capacity; ++i) {
             if (old_hashes[i] != 0) {
                 add_helper(std::move(old_array[i]));
             }
@@ -42,7 +45,7 @@ class rh_set {
         delete[] old_hashes;
     }
 
-    static size_t my_hash(T & val) {
+    size_t my_hash(const T & val) const {
         static auto hash_function = std::hash<T>();
         auto hashval = hash_function(val);
         hashval |= (hashval == 0); // set to 1 if 0
@@ -50,15 +53,19 @@ class rh_set {
     }
 
     void add_helper(T&& val) {
-        const int mask = _capacity - 1;
-
         auto hashval = my_hash(val); 
-        int index = hashval & mask; // use mask instead of mod bc power of 2
+        int index = hashval & _mask; // use mask instead of mod bc power of 2
         int distance = 0;
 
-        while (_hashes[index] != 0) {
+        while (_hashes[index]) {
+            // element already exists in the set so return
+            if (_array[index] == val) {
+                --_size;
+                break;
+            }
+
             // Compute the probing distance of the element at the current index
-            int cur_distance = (index + _capacity - (_hashes[index] & mask) ) & mask;
+            const int cur_distance = (index + _capacity - (_hashes[index] & _mask) ) & _mask;
 
             // Swap with the current element if its probing distance is smaller
             if (cur_distance < distance) {
@@ -67,8 +74,8 @@ class rh_set {
                 distance = cur_distance;
             }
 
-            index = (index + 1) & mask;
-            distance++;
+            index = (index + 1) & _mask;
+            ++distance;
         }
 
         _hashes[index] = hashval;
@@ -82,9 +89,10 @@ public:
     rh_set() {
         _size = 0;
         _capacity = INITIAL_SIZE;
+        _mask = _capacity - 1;
         _array = new T[INITIAL_SIZE];
         _hashes = new std::size_t[INITIAL_SIZE];
-        for (int i = 0; i < INITIAL_SIZE; i++) {
+        for (int i = 0; i < INITIAL_SIZE; ++i) {
             _hashes[i] = 0;
         }
     }
@@ -108,15 +116,13 @@ public:
     }
 
     // Returns true if val is in our hashtable, false otherwise
-    bool contains(T val) {
-        const int mask = _capacity - 1;
-
-        auto hashval = my_hash(std::move(val));
-        int index = hashval & mask;
+    bool contains(const T val) const {
+        const auto hashval = my_hash(std::move(val));
+        int index = hashval & _mask;
         int distance = 0;
 
-        while (_hashes[index] != 0 && index < _capacity) {
-            int cur_distance = (index + _capacity - (_hashes[index] & mask) ) & mask;
+        while (_hashes[index]) {
+            const int cur_distance = (index + _capacity - (_hashes[index] & _mask) ) & _mask;
 
             if (distance > cur_distance) {
                 return false;
@@ -124,19 +130,67 @@ public:
             if (_array[index] == val) {
                 return true;
             }
-            index = (index + 1) & mask;
-            distance++;
+            index = (index + 1) & _mask;
+            ++distance;
         }
         return false;
     }
 
-    int size() {
+    // Remove element from our table (true on removed, false otherwise)
+    bool pop(const T val) {
+        const auto hash_val = my_hash(std::move(val));
+        int index = hash_val & _mask;
+        int distance = 0;
+
+        while (_hashes[index]) {
+            const int cur_distance = (index + _capacity - (_hashes[index] & _mask) ) & _mask;
+
+            if (distance > cur_distance) {
+                return false; // not found
+            }
+            if (_array[index] == val) {
+                shift(index);
+                --_size;
+                return true; // successfully removed
+            }
+            index = (index + 1) & _mask;
+            ++distance;
+        }
+        return false; // not found
+    }
+
+    // called after deleting to shift elements back (fill in empty spot)
+    void shift(int index) {
+        int before = index;
+        index = (index + 1) & _mask;
+
+        while (_hashes[index]) {
+            // compute probing distance for current element
+            const int cur_distance = (index + _capacity - (_hashes[index] & _mask) ) & _mask;
+            // if distance is 0, then we can stop
+            if (cur_distance == 0) {
+                break;
+            }
+
+            std::swap(_hashes[before], _hashes[index]);
+            std::swap(_array[before], _array[index]);
+            
+            before = (before + 1) & _mask;
+            index = (index + 1) & _mask;
+        }
+        
+        // mark as erased
+        _hashes[before] = 0;
+        // NOTE not calling destructor
+    }
+
+    int size() const {
         return _size;
     }
 
-    void print() {
-        for (int i = 0; i < _capacity; i++) {
-            if (_hashes[i] != 0) {
+    void print() const {
+        for (int i = 0; i < _capacity; ++i) {
+            if (_hashes[i]) {
                 std::cout << _array[i] << std::endl;
             }
         }
@@ -144,6 +198,4 @@ public:
 };
 
 
-// TODO: need to add removing functionality
-// TODO do I need to have copies of the elements in _array on the heap?
 #endif
